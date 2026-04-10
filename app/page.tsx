@@ -44,9 +44,9 @@ type ScoredParticipant = Participant & {
 const TEAM_NAMES = [
   "Arsenal",
   "Aston Villa",
-  "Bournemouth",
+  "AFC Bournemouth",
   "Brentford",
-  "Brighton",
+  "Brighton & Hove Albion",
   "Burnley",
   "Chelsea",
   "Crystal Palace",
@@ -59,24 +59,63 @@ const TEAM_NAMES = [
   "Newcastle United",
   "Nottingham Forest",
   "Sunderland",
-  "Tottenham",
-  "West Ham",
-  "Wolves",
-];
+  "Tottenham Hotspur",
+  "West Ham United",
+  "Wolverhampton Wanderers",
+] as const;
 
-const SACKED_MANAGER_OPTIONS = [
-  "Nuno Espírito Santo - Nottingham Forest",
-  "Graham Potter - West Ham United",
-  "Ange Postecoglou - Nottingham Forest",
-  "Vítor Pereira - Wolverhampton Wanderers",
+const TEAM_NAME_MAP: Record<string, string> = {
+  Arsenal: "Arsenal",
+  "Aston Villa": "Aston Villa",
+  Bournemouth: "AFC Bournemouth",
+  "AFC Bournemouth": "AFC Bournemouth",
+  Brentford: "Brentford",
+  Brighton: "Brighton & Hove Albion",
+  "Brighton & Hove Albion": "Brighton & Hove Albion",
+  Burnley: "Burnley",
+  Chelsea: "Chelsea",
+  "Crystal Palace": "Crystal Palace",
+  Everton: "Everton",
+  Fulham: "Fulham",
+  "Leeds United": "Leeds United",
+  Liverpool: "Liverpool",
+  "Manchester City": "Manchester City",
+  "Manchester United": "Manchester United",
+  "Newcastle United": "Newcastle United",
+  "Nottingham Forest": "Nottingham Forest",
+  Sunderland: "Sunderland",
+  Tottenham: "Tottenham Hotspur",
+  "Tottenham Hotspur": "Tottenham Hotspur",
+  "West Ham": "West Ham United",
+  "West Ham United": "West Ham United",
+  Wolves: "Wolverhampton Wanderers",
+  "Wolverhampton Wanderers": "Wolverhampton Wanderers",
+};
+
+const START_OF_SEASON_MANAGER_OPTIONS = [
+  "Mikel Arteta - Arsenal",
+  "Unai Emery - Aston Villa",
+  "Andoni Iraola - AFC Bournemouth",
+  "Keith Andrews - Brentford",
+  "Fabian Hurzeler - Brighton & Hove Albion",
+  "Scott Parker - Burnley",
   "Enzo Maresca - Chelsea",
+  "Oliver Glasner - Crystal Palace",
+  "David Moyes - Everton",
+  "Marco Silva - Fulham",
+  "Daniel Farke - Leeds United",
+  "Arne Slot - Liverpool",
+  "Pep Guardiola - Manchester City",
   "Ruben Amorim - Manchester United",
+  "Eddie Howe - Newcastle United",
+  "Nuno Espírito Santo - Nottingham Forest",
+  "Régis Le Bris - Sunderland",
   "Thomas Frank - Tottenham Hotspur",
-  "Sean Dyche - Nottingham Forest",
-  "Igor Tudor - Tottenham Hotspur",
-];
+  "Graham Potter - West Ham United",
+  "Vítor Pereira - Wolverhampton Wanderers",
+] as const;
 
-const STORAGE_KEY = "fpl-friends-tracker-v4";
+const STORAGE_KEY = "fpl-friends-tracker-v5";
 const K9_KEY = "fpl-admin-k1n9k4i";
 
 const DEFAULT_PARTICIPANTS: Participant[] = [];
@@ -94,14 +133,18 @@ const MANAGERS_SACKED = [
 ];
 
 const CARD_LEADERS = [
-  "Chelsea - 88 cards",
-  "Brighton - 79 cards",
-  "Bournemouth - 52 cards",
+  { team: "Chelsea", cards: 88 },
+  { team: "Brighton & Hove Albion", cards: 79 },
+  { team: "AFC Bournemouth", cards: 52 },
 ];
 
 function uid() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return Math.random().toString(36).slice(2);
+}
+
+function normalizeTeamName(team: string) {
+  return TEAM_NAME_MAP[team] ?? team;
 }
 
 function ordinal(n: number) {
@@ -148,7 +191,7 @@ function selectOptions(exclude: string[], current?: string) {
 
 function toEditableRows(standings: ApiStandingRow[]): TeamRow[] {
   return standings.map((row) => ({
-    team: row.team,
+    team: normalizeTeamName(row.team),
     played: row.played,
     points: row.points,
     gf: row.gf,
@@ -157,7 +200,8 @@ function toEditableRows(standings: ApiStandingRow[]): TeamRow[] {
 }
 
 function formatRankList(items: string[], start: number) {
-  return items.map((item, index) => `${start + index}. ${item}`).join("\n");
+  return items.map((item, index) => `${start + index}. ${item}`).join("
+");
 }
 
 export default function Page() {
@@ -291,13 +335,13 @@ export default function Page() {
   }
 
   function handleDeletePlayer(id: string) {
-  const enteredPassword = window.prompt("Enter admin password to delete this player:");
-  if (enteredPassword !== K9_KEY) {
-    window.alert("Incorrect password.");
-    return;
+    const enteredPassword = window.prompt("Enter admin password to delete this player:");
+    if (enteredPassword !== K9_KEY) {
+      window.alert("Incorrect password.");
+      return;
+    }
+    setParticipants((current) => current.filter((player) => player.id !== id));
   }
-  setParticipants((current) => current.filter((player) => player.id !== id));
-}
 
   return (
     <main className="min-h-screen bg-slate-100 text-slate-900">
@@ -307,9 +351,7 @@ export default function Page() {
             Fantasy Premier League
           </div>
           <h1 className="text-3xl font-bold tracking-tight">Fantasy Premier League</h1>
-          <p className="mt-2 max-w-3xl text-slate-600">
-            Live standings are pulled from Native Stats through your own Next.js API route.
-          </p>
+          <p className="mt-2 max-w-3xl text-slate-600">Live standings are pulled from Native Stats.</p>
         </div>
 
         <div className="mb-6 flex flex-wrap gap-3">
@@ -334,19 +376,19 @@ export default function Page() {
           <>
             <div className="mb-6 grid gap-4 md:grid-cols-3">
               <div className="rounded-3xl bg-white p-6 shadow-sm">
-                <div className="text-base font-semibold tracking-wide text-slate-800">Most Cards Leader</div>
-                <div className="mt-4 space-y-2 text-sm text-slate-700">
-                  {CARD_LEADERS.map((item) => (
-                    <div key={item} className="whitespace-nowrap">{item}</div>
-                  ))}
+                <div className="text-xl font-bold tracking-tight text-slate-900">Most Cards Leader</div>
+                <div className="mt-4 space-y-2 text-slate-700">
+                  <div className="text-2xl font-bold leading-tight">{CARD_LEADERS[0].team} - {CARD_LEADERS[0].cards} cards</div>
+                  <div className="text-base font-medium leading-tight">{CARD_LEADERS[1].team} - {CARD_LEADERS[1].cards} cards</div>
+                  <div className="text-sm font-medium leading-tight">{CARD_LEADERS[2].team} - {CARD_LEADERS[2].cards} cards</div>
                 </div>
                 <div className="mt-4 text-xs text-slate-500">Updated April 10, 2026 · Numbers may not be exact and are approximate values from Claude.</div>
               </div>
               <div className="rounded-3xl bg-white p-6 shadow-sm">
-                <div className="text-base font-semibold tracking-wide text-slate-800">Managers Sacked</div>
+                <div className="text-xl font-bold tracking-tight text-slate-900">Managers Sacked</div>
                 <div className="mt-4 space-y-2 text-sm text-slate-700">
                   {MANAGERS_SACKED.map((item) => (
-                    <div key={item.name} className="whitespace-nowrap text-sm">
+                    <div key={item.name} className="whitespace-nowrap leading-tight">
                       <strong>{item.name}</strong> - {item.team}
                     </div>
                   ))}
@@ -354,7 +396,7 @@ export default function Page() {
                 <div className="mt-4 text-xs text-slate-500">Updated April 10, 2026</div>
               </div>
               <div className="rounded-3xl bg-white p-6 shadow-sm">
-                <div className="text-base font-semibold tracking-wide text-slate-800">Zero Goal Difference</div>
+                <div className="text-xl font-bold tracking-tight text-slate-900">Zero Goal Difference</div>
                 <div className="mt-4 text-xl font-semibold">{zeroGdTeams.length ? zeroGdTeams.join(", ") : "No Team Right Now"}</div>
               </div>
             </div>
@@ -420,7 +462,6 @@ export default function Page() {
             <section className="mt-6 rounded-3xl bg-white p-5 shadow-sm">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h2 className="text-xl font-semibold">Player Picks</h2>
-                <div className="text-sm text-slate-500">Delete requires admin password</div>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-[1400px] text-sm">
@@ -493,7 +534,7 @@ export default function Page() {
                             value={value}
                             onChange={(e) => {
                               const next = [...entry.top5];
-                              next[index] = e.target.value;
+                              next[index] = normalizeTeamName(e.target.value);
                               setEntry((current) => ({ ...current, top5: next }));
                             }}
                             className="w-full rounded-2xl border border-slate-300 px-3 py-2"
@@ -521,7 +562,7 @@ export default function Page() {
                             value={value}
                             onChange={(e) => {
                               const next = [...entry.bottom5];
-                              next[index] = e.target.value;
+                              next[index] = normalizeTeamName(e.target.value);
                               setEntry((current) => ({ ...current, bottom5: next }));
                             }}
                             className="w-full rounded-2xl border border-slate-300 px-3 py-2"
@@ -546,7 +587,7 @@ export default function Page() {
                       <label className="mb-1 block text-sm font-medium">Team</label>
                       <select
                         value={entry.wildcardTeam}
-                        onChange={(e) => setEntry((current) => ({ ...current, wildcardTeam: e.target.value }))}
+                        onChange={(e) => setEntry((current) => ({ ...current, wildcardTeam: normalizeTeamName(e.target.value) }))}
                         className="w-full rounded-2xl border border-slate-300 px-3 py-2"
                       >
                         <option value="">Select team</option>
@@ -573,26 +614,26 @@ export default function Page() {
 
                 <div className="rounded-3xl bg-slate-50 p-4">
                   <h3 className="mb-4 text-lg font-semibold">Special Picks</h3>
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <label className="mb-1 block text-sm font-medium">Manager Sacked</label>
+                      <label className="mb-1 block whitespace-nowrap text-sm font-medium">Manager Sacked</label>
                       <select
                         value={entry.managerSacked}
                         onChange={(e) => setEntry((current) => ({ ...current, managerSacked: e.target.value }))}
-                        className="w-full rounded-2xl border border-slate-300 px-3 py-2"
+                        className="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm"
                       >
                         <option value="">Select manager</option>
-                        {SACKED_MANAGER_OPTIONS.map((option) => (
+                        {START_OF_SEASON_MANAGER_OPTIONS.map((option) => (
                           <option key={option} value={option}>{option}</option>
                         ))}
                       </select>
                     </div>
                     <div>
-                      <label className="mb-1 block text-sm font-medium">Zero Goal Differential</label>
+                      <label className="mb-1 block whitespace-nowrap text-sm font-medium">Zero Goal Differential</label>
                       <select
                         value={entry.zeroGoalDiff}
-                        onChange={(e) => setEntry((current) => ({ ...current, zeroGoalDiff: e.target.value }))}
-                        className="w-full rounded-2xl border border-slate-300 px-3 py-2"
+                        onChange={(e) => setEntry((current) => ({ ...current, zeroGoalDiff: normalizeTeamName(e.target.value) }))}
+                        className="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm"
                       >
                         <option value="">Select team</option>
                         {selectOptions(entry.top5.filter(Boolean).concat(entry.bottom5.filter(Boolean), [entry.wildcardTeam, entry.mostCards, entry.mostDraws].filter(Boolean)), entry.zeroGoalDiff).map((team) => (
@@ -601,11 +642,11 @@ export default function Page() {
                       </select>
                     </div>
                     <div>
-                      <label className="mb-1 block text-sm font-medium">Most Cards</label>
+                      <label className="mb-1 block whitespace-nowrap text-sm font-medium">Most Cards</label>
                       <select
                         value={entry.mostCards}
-                        onChange={(e) => setEntry((current) => ({ ...current, mostCards: e.target.value }))}
-                        className="w-full rounded-2xl border border-slate-300 px-3 py-2"
+                        onChange={(e) => setEntry((current) => ({ ...current, mostCards: normalizeTeamName(e.target.value) }))}
+                        className="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm"
                       >
                         <option value="">Select team</option>
                         {selectOptions(entry.top5.filter(Boolean).concat(entry.bottom5.filter(Boolean), [entry.wildcardTeam, entry.zeroGoalDiff, entry.mostDraws].filter(Boolean)), entry.mostCards).map((team) => (
@@ -614,11 +655,11 @@ export default function Page() {
                       </select>
                     </div>
                     <div>
-                      <label className="mb-1 block text-sm font-medium">Most Draws</label>
+                      <label className="mb-1 block whitespace-nowrap text-sm font-medium">Most Draws</label>
                       <select
                         value={entry.mostDraws}
-                        onChange={(e) => setEntry((current) => ({ ...current, mostDraws: e.target.value }))}
-                        className="w-full rounded-2xl border border-slate-300 px-3 py-2"
+                        onChange={(e) => setEntry((current) => ({ ...current, mostDraws: normalizeTeamName(e.target.value) }))}
+                        className="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm"
                       >
                         <option value="">Select team</option>
                         {selectOptions(entry.top5.filter(Boolean).concat(entry.bottom5.filter(Boolean), [entry.wildcardTeam, entry.mostCards, entry.zeroGoalDiff].filter(Boolean)), entry.mostDraws).map((team) => (
