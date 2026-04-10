@@ -77,38 +77,9 @@ const SACKED_MANAGER_OPTIONS = [
 ];
 
 const STORAGE_KEY = "fpl-friends-tracker-v4";
-const DELETION = "fpladmin-fpladmin";
+const K9_KEY = "fpl-admin-k1n9k4i";
 
-const DEFAULT_PARTICIPANTS: Participant[] = [
-  {
-    id: "1",
-    username: "Preston",
-    picks: {
-      top5: ["Liverpool", "Arsenal", "Manchester City", "Chelsea", "Tottenham"],
-      bottom5: ["Fulham", "Brentford", "Burnley", "Leeds United", "Wolves"],
-      wildcardTeam: "Crystal Palace",
-      wildcardPosition: "12",
-      mostCards: "Brighton",
-      managerSacked: "Graham Potter - West Ham United",
-      zeroGoalDiff: "Chelsea",
-      mostDraws: "Newcastle",
-    },
-  },
-  {
-    id: "2",
-    username: "Ashton",
-    picks: {
-      top5: ["Liverpool", "Arsenal", "Tottenham", "Chelsea", "Manchester City"],
-      bottom5: ["Sunderland", "West Ham", "Burnley", "Leeds United", "Wolves"],
-      wildcardTeam: "Fulham",
-      wildcardPosition: "11",
-      mostCards: "Chelsea",
-      managerSacked: "Graham Potter - West Ham United",
-      zeroGoalDiff: "Fulham",
-      mostDraws: "Aston Villa",
-    },
-  },
-];
+const DEFAULT_PARTICIPANTS: Participant[] = [];
 
 const MANAGERS_SACKED = [
   { name: "Nuno Espírito Santo", team: "Nottingham Forest" },
@@ -186,8 +157,7 @@ function toEditableRows(standings: ApiStandingRow[]): TeamRow[] {
 }
 
 function formatRankList(items: string[], start: number) {
-  return items.map((item, index) => `${start + index}. ${item}`).join("
-");
+  return items.map((item, index) => `${start + index}. ${item}`).join("\n");
 }
 
 export default function Page() {
@@ -321,13 +291,13 @@ export default function Page() {
   }
 
   function handleDeletePlayer(id: string) {
-    const enteredPassword = window.prompt("Enter admin password to delete this player:");
-    if (enteredPassword !== DELETION) {
-      window.alert("Incorrect password.");
-      return;
-    }
-    setParticipants((current) => current.filter((player) => player.id !== id));
+  const enteredPassword = window.prompt("Enter admin password to delete this player:");
+  if (enteredPassword !== K9_KEY) {
+    window.alert("Incorrect password.");
+    return;
   }
+  setParticipants((current) => current.filter((player) => player.id !== id));
+}
 
   return (
     <main className="min-h-screen bg-slate-100 text-slate-900">
