@@ -115,7 +115,7 @@ const START_OF_SEASON_MANAGER_OPTIONS = [
   "Vítor Pereira - Wolverhampton Wanderers",
 ] as const;
 
-const STORAGE_KEY = "fpl-friends-tracker-v5";
+const STORAGE_KEY = "fpl-friends-tracker-v6";
 const K9_KEY = "fpl-admin-k1n9k4i";
 
 const DEFAULT_PARTICIPANTS: Participant[] = [];
@@ -138,6 +138,37 @@ const CARD_LEADERS = [
   { team: "AFC Bournemouth", cards: 52 },
 ];
 
+const RULES = [
+  {
+    title: "Top 5 & Bottom 5 Predictions",
+    items: [
+      "Correct exact position — 3 points",
+      "Correct area only (team finishes in top 5 or bottom 5, but not the exact spot) — 1 point",
+    ],
+  },
+  {
+    title: "Mystery Pick",
+    items: ["1 team predicted to finish 6th–15th, with exact spot — 5 points"],
+  },
+  {
+    title: "Special Picks",
+    items: [
+      "Manager sacked anytime in the season — 3 points",
+      "Team with goal differential closest to 0 — 3 points",
+      "Team with the most cards (yellow/red combined) — 3 points",
+      "Team with the most draws — 3 points",
+    ],
+  },
+  {
+    title: "Scoring Example",
+    items: [
+      "Predict Arsenal 2nd — Arsenal finish 2nd = 3 points",
+      "Predict Arsenal 2nd — Arsenal finish 4th (still top 5) = 1 point",
+      "Mystery Pick Tottenham Hotspur 10th — Tottenham Hotspur finish 10th = 5 points",
+    ],
+  },
+];
+
 function uid() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return Math.random().toString(36).slice(2);
@@ -155,7 +186,24 @@ function ordinal(n: number) {
   return `${n}th`;
 }
 
-function scoreParticipant(participant: Participant, table: Array<TeamRow & { gd: number; position: number }>): ScoredParticipant {
+function formatRankList(items: string[], start: number) {
+  return items.map((item, index) => `${start + index}. ${item}`).join("\n");
+}
+
+function getClosestZeroGoalDiffTeams(table: Array<TeamRow & { gd: number }>) {
+  if (!table.length) return { teams: [] as string[], distance: 0 };
+  const minDistance = Math.min(...table.map((row) => Math.abs(row.gd)));
+  return {
+    teams: table.filter((row) => Math.abs(row.gd) === minDistance).map((row) => row.team),
+    distance: minDistance,
+  };
+}
+
+function scoreParticipant(
+  participant: Participant,
+  table: Array<TeamRow & { gd: number; position: number }>,
+  closestZeroTeams: string[]
+): ScoredParticipant {
   let score = 0;
   const positionMap = Object.fromEntries(table.map((row) => [row.team, row.position]));
 
@@ -176,17 +224,9 @@ function scoreParticipant(participant: Participant, table: Array<TeamRow & { gd:
   if (positionMap[participant.picks.wildcardTeam] === Number(participant.picks.wildcardPosition)) score += 5;
   if (participant.picks.mostCards === "Chelsea") score += 3;
   if (participant.picks.managerSacked === "Graham Potter - West Ham United") score += 3;
-
-  const zeroGoalDifferenceHit = table.find(
-    (row) => row.team === participant.picks.zeroGoalDiff && row.gd === 0
-  );
-  if (zeroGoalDifferenceHit) score += 3;
+  if (closestZeroTeams.includes(participant.picks.zeroGoalDiff)) score += 3;
 
   return { ...participant, score };
-}
-
-function selectOptions(exclude: string[], current?: string) {
-  return TEAM_NAMES.filter((team) => !exclude.includes(team) || team === current);
 }
 
 function toEditableRows(standings: ApiStandingRow[]): TeamRow[] {
@@ -199,16 +239,13 @@ function toEditableRows(standings: ApiStandingRow[]): TeamRow[] {
   }));
 }
 
-function formatRankList(items: string[], start: number) {
-  return items.map((item, index) => `${start + index}. ${item}`).join("\n");
-}
-
 export default function Page() {
   const [leagueTable, setLeagueTable] = useState<TeamRow[]>([]);
   const [participants, setParticipants] = useState<Participant[]>(DEFAULT_PARTICIPANTS);
   const [loadingTable, setLoadingTable] = useState(true);
   const [tableError, setTableError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"standings" | "form">("standings");
+  const [activeTab, setActiveTab] = useState<"standings" | "form" | "rules">("standings");
+  const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null);
   const [entry, setEntry] = useState<Picks & { username: string }>({
     username: "",
     top5: ["", "", "", "", ""],
@@ -270,68 +307,74 @@ export default function Page() {
       .map((row, index) => ({ ...row, position: index + 1 }));
   }, [leagueTable]);
 
+  const closestZeroGoalDiff = useMemo(() => getClosestZeroGoalDiffTeams(displayTable), [displayTable]);
+
   const leaderboard = useMemo(() => {
     return participants
-      .map((participant) => scoreParticipant(participant, displayTable))
+      .map((participant) => scoreParticipant(participant, displayTable, closestZeroGoalDiff.teams))
       .sort((a, b) => b.score - a.score || a.username.localeCompare(b.username));
-  }, [participants, displayTable]);
+  }, [participants, displayTable, closestZeroGoalDiff]);
 
-  const zeroGdTeams = displayTable.filter((team) => team.gd === 0).map((team) => team.team);
-
-function handleSubmit(e: React.FormEvent) {
-  e.preventDefault();
-
-  if (!entry.username.trim()) {
-    alert("Please enter a username.");
-    return;
+  function resetForm() {
+    setEditingPlayerId(null);
+    setEntry({
+      username: "",
+      top5: ["", "", "", "", ""],
+      bottom5: ["", "", "", "", ""],
+      wildcardTeam: "",
+      wildcardPosition: "",
+      mostCards: "",
+      managerSacked: "",
+      zeroGoalDiff: "",
+      mostDraws: "",
+    });
   }
 
-  if (entry.top5.some((pick) => !pick) || entry.bottom5.some((pick) => !pick)) {
-    alert("Please complete all top 5 and bottom 5 picks.");
-    return;
-  }
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
 
-  if (
-    !entry.wildcardTeam ||
-    !entry.wildcardPosition ||
-    !entry.mostCards ||
-    !entry.managerSacked ||
-    !entry.zeroGoalDiff ||
-    !entry.mostDraws
-  ) {
-    alert("Please complete all special picks.");
-    return;
-  }
+    if (!entry.username.trim()) {
+      alert("Please enter a username.");
+      return;
+    }
 
-  const top5Unique = new Set(entry.top5).size === entry.top5.length;
-  const bottom5Unique = new Set(entry.bottom5).size === entry.bottom5.length;
+    if (entry.top5.some((pick) => !pick) || entry.bottom5.some((pick) => !pick)) {
+      alert("Please complete all top 5 and bottom 5 picks.");
+      return;
+    }
 
-  if (!top5Unique) {
-    alert("Top 5 picks must all be different teams.");
-    return;
-  }
+    if (!entry.wildcardTeam || !entry.wildcardPosition || !entry.mostCards || !entry.managerSacked || !entry.zeroGoalDiff || !entry.mostDraws) {
+      alert("Please complete all special picks.");
+      return;
+    }
 
-  if (!bottom5Unique) {
-    alert("Bottom 5 picks must all be different teams.");
-    return;
-  }
+    const top5Unique = new Set(entry.top5).size === entry.top5.length;
+    const bottom5Unique = new Set(entry.bottom5).size === entry.bottom5.length;
 
-  const placementTeams = [...entry.top5, ...entry.bottom5];
+    if (!top5Unique) {
+      alert("Top 5 picks must all be different teams.");
+      return;
+    }
 
-  if (new Set(placementTeams).size !== placementTeams.length) {
-    alert("Top 5 and Bottom 5 picks cannot contain the same team twice.");
-    return;
-  }
+    if (!bottom5Unique) {
+      alert("Bottom 5 picks must all be different teams.");
+      return;
+    }
 
-  if (placementTeams.includes(entry.wildcardTeam)) {
-    alert("Wildcard team must be different from your Top 5 and Bottom 5 picks.");
-    return;
-  }
+    const placementTeams = [...entry.top5, ...entry.bottom5];
 
-  setParticipants((current) => [
-    ...current,
-    {
-      id: uid(),
+    if (new Set(placementTeams).size !== placementTeams.length) {
+      alert("Top 5 and Bottom 5 picks cannot contain the same team twice.");
+      return;
+    }
+
+    if (placementTeams.includes(entry.wildcardTeam)) {
+      alert("Wildcard team must be different from your Top 5 and Bottom 5 picks.");
+      return;
+    }
+
+    const nextParticipant = {
+      id: editingPlayerId ?? uid(),
       username: entry.username.trim(),
       picks: {
         top5: entry.top5,
@@ -343,23 +386,17 @@ function handleSubmit(e: React.FormEvent) {
         zeroGoalDiff: entry.zeroGoalDiff,
         mostDraws: entry.mostDraws,
       },
-    },
-  ]);
+    };
 
-  setEntry({
-    username: "",
-    top5: ["", "", "", "", ""],
-    bottom5: ["", "", "", "", ""],
-    wildcardTeam: "",
-    wildcardPosition: "",
-    mostCards: "",
-    managerSacked: "",
-    zeroGoalDiff: "",
-    mostDraws: "",
-  });
+    if (editingPlayerId) {
+      setParticipants((current) => current.map((player) => (player.id === editingPlayerId ? nextParticipant : player)));
+    } else {
+      setParticipants((current) => [...current, nextParticipant]);
+    }
 
-  setActiveTab("standings");
-}
+    resetForm();
+    setActiveTab("standings");
+  }
 
   function handleDeletePlayer(id: string) {
     const enteredPassword = window.prompt("Enter admin password to delete this player:");
@@ -370,6 +407,28 @@ function handleSubmit(e: React.FormEvent) {
     setParticipants((current) => current.filter((player) => player.id !== id));
   }
 
+  function handleEditPlayer(player: Participant) {
+    const enteredPassword = window.prompt("Enter admin password to edit this player:");
+    if (enteredPassword !== K9_KEY) {
+      window.alert("Incorrect password.");
+      return;
+    }
+
+    setEditingPlayerId(player.id);
+    setEntry({
+      username: player.username,
+      top5: [...player.picks.top5],
+      bottom5: [...player.picks.bottom5],
+      wildcardTeam: player.picks.wildcardTeam,
+      wildcardPosition: player.picks.wildcardPosition,
+      mostCards: player.picks.mostCards,
+      managerSacked: player.picks.managerSacked,
+      zeroGoalDiff: player.picks.zeroGoalDiff,
+      mostDraws: player.picks.mostDraws,
+    });
+    setActiveTab("form");
+  }
+
   return (
     <main className="min-h-screen bg-slate-100 text-slate-900">
       <div className="mx-auto max-w-7xl px-4 py-8 md:px-8">
@@ -378,7 +437,7 @@ function handleSubmit(e: React.FormEvent) {
             Fantasy Premier League
           </div>
           <h1 className="text-3xl font-bold tracking-tight">Fantasy Premier League</h1>
-          <p className="mt-2 max-w-3xl text-slate-600">Jabronis league.</p>
+          <p className="mt-2 max-w-3xl text-slate-600">Live standings are pulled from Native Stats.</p>
         </div>
 
         <div className="mb-6 flex flex-wrap gap-3">
@@ -393,6 +452,12 @@ function handleSubmit(e: React.FormEvent) {
             className={`rounded-2xl px-4 py-2 font-medium ${activeTab === "form" ? "bg-slate-900 text-white" : "bg-white text-slate-700 shadow-sm"}`}
           >
             Add Player
+          </button>
+          <button
+            onClick={() => setActiveTab("rules")}
+            className={`rounded-2xl px-4 py-2 font-medium ${activeTab === "rules" ? "bg-slate-900 text-white" : "bg-white text-slate-700 shadow-sm"}`}
+          >
+            Rules
           </button>
         </div>
 
@@ -424,7 +489,16 @@ function handleSubmit(e: React.FormEvent) {
               </div>
               <div className="rounded-3xl bg-white p-6 shadow-sm">
                 <div className="text-xl font-bold tracking-tight text-slate-900">Zero Goal Difference</div>
-                <div className="mt-4 text-xl font-semibold">{zeroGdTeams.length ? zeroGdTeams.join(", ") : "No Team Right Now"}</div>
+                <div className="mt-4 space-y-2 text-slate-700">
+                  {closestZeroGoalDiff.teams.map((team) => (
+                    <div key={team} className="text-base font-semibold leading-tight">{team}</div>
+                  ))}
+                </div>
+                <div className="mt-4 text-xs text-slate-500">
+                  {closestZeroGoalDiff.distance === 0
+                    ? "Teams currently at 0 goal difference."
+                    : `Teams closest to 0 goal difference (${closestZeroGoalDiff.distance > 0 ? `±${closestZeroGoalDiff.distance}` : closestZeroGoalDiff.distance}).`}
+                </div>
               </div>
             </div>
 
@@ -491,7 +565,7 @@ function handleSubmit(e: React.FormEvent) {
                 <h2 className="text-xl font-semibold">Player Picks</h2>
               </div>
               <div className="overflow-x-auto">
-                <table className="min-w-[1400px] text-sm">
+                <table className="min-w-[1500px] text-sm">
                   <thead className="bg-slate-50 text-left text-slate-500">
                     <tr>
                       <th className="px-4 py-3">Player</th>
@@ -502,6 +576,7 @@ function handleSubmit(e: React.FormEvent) {
                       <th className="px-4 py-3">Zero Goal Differential</th>
                       <th className="px-4 py-3">Most Cards</th>
                       <th className="px-4 py-3">Most Draws</th>
+                      <th className="px-4 py-3 text-right">Edit</th>
                       <th className="px-4 py-3 text-right">Delete</th>
                     </tr>
                   </thead>
@@ -516,6 +591,14 @@ function handleSubmit(e: React.FormEvent) {
                         <td className="px-4 py-3 text-slate-700">{player.picks.zeroGoalDiff}</td>
                         <td className="px-4 py-3 text-slate-700">{player.picks.mostCards}</td>
                         <td className="px-4 py-3 text-slate-700">{player.picks.mostDraws}</td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => handleEditPlayer(player)}
+                            className="rounded-xl border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+                          >
+                            Edit
+                          </button>
+                        </td>
                         <td className="px-4 py-3 text-right">
                           <button
                             onClick={() => handleDeletePlayer(player.id)}
@@ -535,8 +618,22 @@ function handleSubmit(e: React.FormEvent) {
 
         {activeTab === "form" && (
           <section className="rounded-3xl bg-white p-5 shadow-sm">
-            <h2 className="mb-4 text-xl font-semibold">Add Player</h2>
-            <p className="mb-4 text-sm text-slate-600">Use this form to add a new participant and all of their picks.</p>
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold">{editingPlayerId ? "Edit Player" : "Add Player"}</h2>
+                <p className="mt-1 text-sm text-slate-600">Use this form to add a new participant and all of their picks.</p>
+              </div>
+              {editingPlayerId && (
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50"
+                >
+                  Cancel Edit
+                </button>
+              )}
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-8">
               <div>
                 <label className="mb-2 block text-sm font-medium">Username</label>
@@ -553,7 +650,7 @@ function handleSubmit(e: React.FormEvent) {
                   <h3 className="mb-4 text-lg font-semibold">Top 5 Picks</h3>
                   <div className="space-y-3">
                     {entry.top5.map((value, index) => {
-                      const exclude = entry.top5.filter((team, i) => i !== index && team).concat(entry.bottom5.filter(Boolean), [entry.wildcardTeam, entry.mostCards, entry.zeroGoalDiff, entry.mostDraws].filter(Boolean));
+                      const exclude = entry.top5.filter((team, i) => i !== index && team).concat(entry.bottom5.filter(Boolean));
                       return (
                         <div key={`top-${index}`}>
                           <label className="mb-1 block text-sm font-medium">Position {index + 1}</label>
@@ -567,7 +664,7 @@ function handleSubmit(e: React.FormEvent) {
                             className="w-full rounded-2xl border border-slate-300 px-3 py-2"
                           >
                             <option value="">Select team</option>
-                            {selectOptions(exclude, value).map((team) => (
+                            {TEAM_NAMES.filter((team) => !exclude.includes(team) || team === value).map((team) => (
                               <option key={team} value={team}>{team}</option>
                             ))}
                           </select>
@@ -581,7 +678,7 @@ function handleSubmit(e: React.FormEvent) {
                   <h3 className="mb-4 text-lg font-semibold">Bottom 5 Picks</h3>
                   <div className="space-y-3">
                     {entry.bottom5.map((value, index) => {
-                      const exclude = entry.bottom5.filter((team, i) => i !== index && team).concat(entry.top5.filter(Boolean), [entry.wildcardTeam, entry.mostCards, entry.zeroGoalDiff, entry.mostDraws].filter(Boolean));
+                      const exclude = entry.bottom5.filter((team, i) => i !== index && team).concat(entry.top5.filter(Boolean));
                       return (
                         <div key={`bottom-${index}`}>
                           <label className="mb-1 block text-sm font-medium">Position {index + 16}</label>
@@ -595,7 +692,7 @@ function handleSubmit(e: React.FormEvent) {
                             className="w-full rounded-2xl border border-slate-300 px-3 py-2"
                           >
                             <option value="">Select team</option>
-                            {selectOptions(exclude, value).map((team) => (
+                            {TEAM_NAMES.filter((team) => !exclude.includes(team) || team === value).map((team) => (
                               <option key={team} value={team}>{team}</option>
                             ))}
                           </select>
@@ -618,7 +715,7 @@ function handleSubmit(e: React.FormEvent) {
                         className="w-full rounded-2xl border border-slate-300 px-3 py-2"
                       >
                         <option value="">Select team</option>
-                        {selectOptions(entry.top5.filter(Boolean).concat(entry.bottom5.filter(Boolean), [entry.mostCards, entry.zeroGoalDiff, entry.mostDraws].filter(Boolean)), entry.wildcardTeam).map((team) => (
+                        {TEAM_NAMES.map((team) => (
                           <option key={team} value={team}>{team}</option>
                         ))}
                       </select>
@@ -699,9 +796,27 @@ function handleSubmit(e: React.FormEvent) {
               </div>
 
               <button type="submit" className="rounded-2xl bg-slate-900 px-4 py-2 font-medium text-white hover:bg-slate-800">
-                Add Player
+                {editingPlayerId ? "Save Changes" : "Add Player"}
               </button>
             </form>
+          </section>
+        )}
+
+        {activeTab === "rules" && (
+          <section className="rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-2xl font-bold tracking-tight">Official Rules</h2>
+            <div className="space-y-6">
+              {RULES.map((section) => (
+                <div key={section.title}>
+                  <h3 className="mb-2 text-lg font-semibold">{section.title}</h3>
+                  <div className="space-y-1 text-slate-700">
+                    {section.items.map((item) => (
+                      <div key={item}>• {item}</div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </section>
         )}
       </div>
