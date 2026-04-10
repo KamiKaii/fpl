@@ -278,60 +278,88 @@ export default function Page() {
 
   const zeroGdTeams = displayTable.filter((team) => team.gd === 0).map((team) => team.team);
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+function handleSubmit(e: React.FormEvent) {
+  e.preventDefault();
 
-    const allSelected = [
-      ...entry.top5,
-      ...entry.bottom5,
-      entry.wildcardTeam,
-      entry.mostCards,
-      entry.zeroGoalDiff,
-      entry.mostDraws,
-    ].filter(Boolean);
-
-    if (!entry.username.trim()) return alert("Please enter a username.");
-    if (entry.top5.some((pick) => !pick) || entry.bottom5.some((pick) => !pick)) {
-      return alert("Please complete all top 5 and bottom 5 picks.");
-    }
-    if (!entry.wildcardTeam || !entry.wildcardPosition || !entry.mostCards || !entry.managerSacked || !entry.zeroGoalDiff || !entry.mostDraws) {
-      return alert("Please complete all special picks.");
-    }
-    if (new Set(allSelected).size !== allSelected.length) {
-      return alert("Each team-based pick must be a different team.");
-    }
-
-    setParticipants((current) => [
-      ...current,
-      {
-        id: uid(),
-        username: entry.username.trim(),
-        picks: {
-          top5: entry.top5,
-          bottom5: entry.bottom5,
-          wildcardTeam: entry.wildcardTeam,
-          wildcardPosition: entry.wildcardPosition,
-          mostCards: entry.mostCards,
-          managerSacked: entry.managerSacked,
-          zeroGoalDiff: entry.zeroGoalDiff,
-          mostDraws: entry.mostDraws,
-        },
-      },
-    ]);
-
-    setEntry({
-      username: "",
-      top5: ["", "", "", "", ""],
-      bottom5: ["", "", "", "", ""],
-      wildcardTeam: "",
-      wildcardPosition: "",
-      mostCards: "",
-      managerSacked: "",
-      zeroGoalDiff: "",
-      mostDraws: "",
-    });
-    setActiveTab("standings");
+  if (!entry.username.trim()) {
+    alert("Please enter a username.");
+    return;
   }
+
+  if (entry.top5.some((pick) => !pick) || entry.bottom5.some((pick) => !pick)) {
+    alert("Please complete all top 5 and bottom 5 picks.");
+    return;
+  }
+
+  if (
+    !entry.wildcardTeam ||
+    !entry.wildcardPosition ||
+    !entry.mostCards ||
+    !entry.managerSacked ||
+    !entry.zeroGoalDiff ||
+    !entry.mostDraws
+  ) {
+    alert("Please complete all special picks.");
+    return;
+  }
+
+  const top5Unique = new Set(entry.top5).size === entry.top5.length;
+  const bottom5Unique = new Set(entry.bottom5).size === entry.bottom5.length;
+
+  if (!top5Unique) {
+    alert("Top 5 picks must all be different teams.");
+    return;
+  }
+
+  if (!bottom5Unique) {
+    alert("Bottom 5 picks must all be different teams.");
+    return;
+  }
+
+  const placementTeams = [...entry.top5, ...entry.bottom5];
+
+  if (new Set(placementTeams).size !== placementTeams.length) {
+    alert("Top 5 and Bottom 5 picks cannot contain the same team twice.");
+    return;
+  }
+
+  if (placementTeams.includes(entry.wildcardTeam)) {
+    alert("Wildcard team must be different from your Top 5 and Bottom 5 picks.");
+    return;
+  }
+
+  setParticipants((current) => [
+    ...current,
+    {
+      id: uid(),
+      username: entry.username.trim(),
+      picks: {
+        top5: entry.top5,
+        bottom5: entry.bottom5,
+        wildcardTeam: entry.wildcardTeam,
+        wildcardPosition: entry.wildcardPosition,
+        mostCards: entry.mostCards,
+        managerSacked: entry.managerSacked,
+        zeroGoalDiff: entry.zeroGoalDiff,
+        mostDraws: entry.mostDraws,
+      },
+    },
+  ]);
+
+  setEntry({
+    username: "",
+    top5: ["", "", "", "", ""],
+    bottom5: ["", "", "", "", ""],
+    wildcardTeam: "",
+    wildcardPosition: "",
+    mostCards: "",
+    managerSacked: "",
+    zeroGoalDiff: "",
+    mostDraws: "",
+  });
+
+  setActiveTab("standings");
+}
 
   function handleDeletePlayer(id: string) {
     const enteredPassword = window.prompt("Enter admin password to delete this player:");
