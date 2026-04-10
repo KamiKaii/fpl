@@ -200,8 +200,7 @@ function toEditableRows(standings: ApiStandingRow[]): TeamRow[] {
 }
 
 function formatRankList(items: string[], start: number) {
-  return items.map((item, index) => `${start + index}. ${item}`).join("
-");
+  return items.map((item, index) => `${start + index}. ${item}`).join("\n");
 }
 
 export default function Page() {
