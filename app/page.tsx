@@ -350,7 +350,7 @@ export default function Page() {
             Fantasy Premier League
           </div>
           <h1 className="text-3xl font-bold tracking-tight">Fantasy Premier League</h1>
-          <p className="mt-2 max-w-3xl text-slate-600">Live standings are pulled from Native Stats.</p>
+          <p className="mt-2 max-w-3xl text-slate-600">Jabronis league.</p>
         </div>
 
         <div className="mb-6 flex flex-wrap gap-3">
@@ -635,7 +635,7 @@ export default function Page() {
                         className="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm"
                       >
                         <option value="">Select team</option>
-                        {selectOptions(entry.top5.filter(Boolean).concat(entry.bottom5.filter(Boolean), [entry.wildcardTeam, entry.mostCards, entry.mostDraws].filter(Boolean)), entry.zeroGoalDiff).map((team) => (
+                        {TEAM_NAMES.map((team) => (
                           <option key={team} value={team}>{team}</option>
                         ))}
                       </select>
@@ -648,7 +648,7 @@ export default function Page() {
                         className="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm"
                       >
                         <option value="">Select team</option>
-                        {selectOptions(entry.top5.filter(Boolean).concat(entry.bottom5.filter(Boolean), [entry.wildcardTeam, entry.zeroGoalDiff, entry.mostDraws].filter(Boolean)), entry.mostCards).map((team) => (
+                        {TEAM_NAMES.map((team) => (
                           <option key={team} value={team}>{team}</option>
                         ))}
                       </select>
@@ -661,7 +661,7 @@ export default function Page() {
                         className="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm"
                       >
                         <option value="">Select team</option>
-                        {selectOptions(entry.top5.filter(Boolean).concat(entry.bottom5.filter(Boolean), [entry.wildcardTeam, entry.mostCards, entry.zeroGoalDiff].filter(Boolean)), entry.mostDraws).map((team) => (
+                        {TEAM_NAMES.map((team) => (
                           <option key={team} value={team}>{team}</option>
                         ))}
                       </select>
