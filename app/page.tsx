@@ -241,7 +241,7 @@ function scoreParticipant(
     return currentPosition === pickedPosition || (currentPosition >= 1 && currentPosition <= 5);
   }).length;
   badges.push({
-    label: `${top5Hits}x Top 5`,
+    label: `${top5Hits}x Top Five (${top5Points} points)`,
     title: `Top 5 picks: ${top5Points} pts across ${top5Hits} hit${top5Hits === 1 ? "" : "s"}`,
     variant: "top5",
   });
@@ -266,7 +266,7 @@ function scoreParticipant(
     return currentPosition === pickedPosition || (currentPosition >= 16 && currentPosition <= 20);
   }).length;
   badges.push({
-    label: `${bottom5Hits}x Bottom 5`,
+    label: `${bottom5Hits}x Bottom Five (${bottom5Points} points)`,
     title: `Bottom 5 picks: ${bottom5Points} pts across ${bottom5Hits} hit${bottom5Hits === 1 ? "" : "s"}`,
     variant: "bottom5",
   });
