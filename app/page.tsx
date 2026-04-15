@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "../lib/supabaseClient";
 
 type ApiStandingRow = {
   position: number;
@@ -38,8 +38,15 @@ type Participant = {
   picks: Picks;
 };
 
+type ScoreBadge = {
+  label: string;
+  title: string;
+  variant: "top5" | "bottom5" | "wildcard" | "cards" | "fired" | "zero_gd";
+};
+
 type ScoredParticipant = Participant & {
   score: number;
+  badges: ScoreBadge[];
 };
 
 type ParticipantRow = {
@@ -212,28 +219,80 @@ function scoreParticipant(
   closestZeroTeams: string[]
 ): ScoredParticipant {
   let score = 0;
+  const badges: ScoreBadge[] = [];
   const positionMap = Object.fromEntries(table.map((row) => [row.team, row.position]));
 
+  let top5Points = 0;
   participant.picks.top5.forEach((team, index) => {
     const pickedPosition = index + 1;
     const currentPosition = positionMap[team];
-    if (currentPosition === pickedPosition) score += 3;
-    else if (currentPosition >= 1 && currentPosition <= 5) score += 1;
+    if (currentPosition === pickedPosition) {
+      score += 3;
+      top5Points += 3;
+    } else if (currentPosition >= 1 && currentPosition <= 5) {
+      score += 1;
+      top5Points += 1;
+    }
   });
+  if (top5Points > 0) {
+    const top5Hits = participant.picks.top5.filter((team, index) => {
+    const pickedPosition = index + 1;
+    const currentPosition = positionMap[team];
+    return currentPosition === pickedPosition || (currentPosition >= 1 && currentPosition <= 5);
+  }).length;
+  badges.push({
+    label: `${top5Hits}x Top 5`,
+    title: `Top 5 picks: ${top5Points} pts across ${top5Hits} hit${top5Hits === 1 ? "" : "s"}`,
+    variant: "top5",
+  });
+  }
 
+  let bottom5Points = 0;
   participant.picks.bottom5.forEach((team, index) => {
     const pickedPosition = index + 16;
     const currentPosition = positionMap[team];
-    if (currentPosition === pickedPosition) score += 3;
-    else if (currentPosition >= 16 && currentPosition <= 20) score += 1;
+    if (currentPosition === pickedPosition) {
+      score += 3;
+      bottom5Points += 3;
+    } else if (currentPosition >= 16 && currentPosition <= 20) {
+      score += 1;
+      bottom5Points += 1;
+    }
   });
+  if (bottom5Points > 0) {
+    const bottom5Hits = participant.picks.bottom5.filter((team, index) => {
+    const pickedPosition = index + 16;
+    const currentPosition = positionMap[team];
+    return currentPosition === pickedPosition || (currentPosition >= 16 && currentPosition <= 20);
+  }).length;
+  badges.push({
+    label: `${bottom5Hits}x Bottom 5`,
+    title: `Bottom 5 picks: ${bottom5Points} pts across ${bottom5Hits} hit${bottom5Hits === 1 ? "" : "s"}`,
+    variant: "bottom5",
+  });
+  }
 
-  if (positionMap[participant.picks.wildcardTeam] === Number(participant.picks.wildcardPosition)) score += 5;
-  if (participant.picks.mostCards === "Chelsea") score += 3;
-  if (participant.picks.managerSacked === "Graham Potter - West Ham United") score += 3;
-  if (closestZeroTeams.includes(participant.picks.zeroGoalDiff)) score += 3;
+  if (positionMap[participant.picks.wildcardTeam] === Number(participant.picks.wildcardPosition)) {
+    score += 5;
+    badges.push({ label: "Wildcard", title: "Wildcard exact hit: 5 pts", variant: "wildcard" });
+  }
 
-  return { ...participant, score };
+  if (participant.picks.mostCards === "Chelsea") {
+    score += 3;
+    badges.push({ label: "Cards", title: "Most cards: 3 pts", variant: "cards" });
+  }
+
+  if (participant.picks.managerSacked === "Graham Potter - West Ham United") {
+    score += 3;
+    badges.push({ label: "Fired", title: "Manager sacked: 3 pts", variant: "fired" });
+  }
+
+  if (closestZeroTeams.includes(participant.picks.zeroGoalDiff)) {
+    score += 3;
+    badges.push({ label: "Zero GD", title: "Closest to zero goal difference: 3 pts", variant: "zero_gd" });
+  }
+
+  return { ...participant, score, badges };
 }
 
 function toEditableRows(standings: ApiStandingRow[]): TeamRow[] {
@@ -532,7 +591,61 @@ export default function Page() {
 
         {activeTab === "standings" && !!displayTable.length && (
           <>
-            <div className="mb-6 grid gap-4 md:grid-cols-3">
+            <section className="rounded-3xl bg-white p-5 shadow-sm">
+              <h2 className="mb-4 text-xl font-semibold">League Leaderboard</h2>
+              <div className="overflow-hidden rounded-2xl border border-slate-200">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-slate-50 text-left text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">Rank</th>
+                      <th className="px-4 py-3">Player</th>
+                      <th className="px-4 py-3">Points From</th>
+                      <th className="px-4 py-3 text-right">Score</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leaderboard.map((person, index) => (
+                      <tr key={person.id} className="border-t border-slate-200">
+                        <td className="px-4 py-3 font-medium">#{index + 1}</td>
+                        <td className="px-4 py-3 font-medium">{person.username}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              {person.badges.length ? (
+                                person.badges.map((badge) => (
+                                  <span
+                                    key={`${person.id}-${badge.label}`}
+                                    title={badge.title}
+                                    className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                      badge.variant === "top5"
+                                        ? "bg-sky-100 text-sky-800"
+                                        : badge.variant === "bottom5"
+                                          ? "bg-rose-100 text-rose-800"
+                                          : badge.variant === "wildcard"
+                                            ? "bg-violet-100 text-violet-800"
+                                            : badge.variant === "cards"
+                                              ? "bg-amber-100 text-amber-800"
+                                              : badge.variant === "fired"
+                                                ? "bg-slate-200 text-slate-800"
+                                                : "bg-emerald-100 text-emerald-800"
+                                    }`}
+                                  >
+                                    {badge.label}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-xs text-slate-400">—</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold">{person.score} pts</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-3">
               <div className="rounded-3xl bg-white p-6 shadow-sm">
                 <div className="text-xl font-bold tracking-tight text-slate-900">Most Cards Leader</div>
                 <div className="mt-4 space-y-2 text-slate-700">
@@ -559,7 +672,7 @@ export default function Page() {
                 <div className="text-xl font-bold tracking-tight text-slate-900">Zero Goal Difference</div>
                 <div className="mt-4 space-y-2 text-slate-700">
                   {closestZeroGoalDiff.teams.map((team) => (
-                    <div key={team} className="text-base font-semibold leading-tight">{team}</div>
+                    <div key={team} className="text-base font-semibold leading-tight whitespace-nowrap">{team}</div>
                   ))}
                 </div>
                 <div className="mt-4 text-xs text-slate-500">
@@ -570,70 +683,12 @@ export default function Page() {
               </div>
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-              <section className="rounded-3xl bg-white p-5 shadow-sm">
-                <h2 className="mb-4 text-xl font-semibold">League Table</h2>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-left text-slate-500">
-                        <th className="px-2 py-3">#</th>
-                        <th className="px-2 py-3">Team</th>
-                        <th className="px-2 py-3 text-center">P</th>
-                        <th className="px-2 py-3 text-center">GD</th>
-                        <th className="px-2 py-3 text-center">GF</th>
-                        <th className="px-2 py-3 text-center">GA</th>
-                        <th className="px-2 py-3 text-center">Pts</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displayTable.map((row) => (
-                        <tr key={row.team} className="border-b last:border-0 hover:bg-slate-50">
-                          <td className="px-2 py-3 font-medium">{row.position}</td>
-                          <td className="px-2 py-3 font-medium">{row.team}</td>
-                          <td className="px-2 py-3 text-center">{row.played}</td>
-                          <td className="px-2 py-3 text-center">{row.gd > 0 ? `+${row.gd}` : row.gd}</td>
-                          <td className="px-2 py-3 text-center">{row.gf}</td>
-                          <td className="px-2 py-3 text-center">{row.ga}</td>
-                          <td className="px-2 py-3 text-center font-semibold">{row.points}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-
-              <section className="rounded-3xl bg-white p-5 shadow-sm">
-                <h2 className="mb-4 text-xl font-semibold">Players' Standings</h2>
-                <div className="overflow-hidden rounded-2xl border border-slate-200">
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-slate-50 text-left text-slate-500">
-                      <tr>
-                        <th className="px-4 py-3">Rank</th>
-                        <th className="px-4 py-3">Player</th>
-                        <th className="px-4 py-3 text-right">Score</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {leaderboard.map((person, index) => (
-                        <tr key={person.id} className="border-t border-slate-200">
-                          <td className="px-4 py-3 font-medium">#{index + 1}</td>
-                          <td className="px-4 py-3 font-medium">{person.username}</td>
-                          <td className="px-4 py-3 text-right font-semibold">{person.score} pts</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            </div>
-
             <section className="mt-6 rounded-3xl bg-white p-5 shadow-sm">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h2 className="text-xl font-semibold">Player Picks</h2>
               </div>
               <div className="overflow-x-auto">
-                <table className="min-w-[1500px] text-sm">
+                <table className="min-w-[1600px] text-sm">
                   <thead className="bg-slate-50 text-left text-slate-500">
                     <tr>
                       <th className="px-4 py-3">Player</th>
@@ -651,14 +706,14 @@ export default function Page() {
                   <tbody>
                     {participants.map((player) => (
                       <tr key={player.id} className="border-t border-slate-200 align-top">
-                        <td className="px-4 py-3 font-medium">{player.username}</td>
-                        <td className="px-4 py-3 whitespace-pre-line text-slate-700">{formatRankList(player.picks.top5, 1)}</td>
-                        <td className="px-4 py-3 whitespace-pre-line text-slate-700">{formatRankList(player.picks.bottom5, 16)}</td>
-                        <td className="px-4 py-3 text-slate-700">{player.picks.wildcardTeam} - {ordinal(Number(player.picks.wildcardPosition))}</td>
-                        <td className="px-4 py-3 text-slate-700">{player.picks.managerSacked}</td>
-                        <td className="px-4 py-3 text-slate-700">{player.picks.zeroGoalDiff}</td>
-                        <td className="px-4 py-3 text-slate-700">{player.picks.mostCards}</td>
-                        <td className="px-4 py-3 text-slate-700">{player.picks.mostDraws}</td>
+                        <td className="px-4 py-3 font-medium whitespace-nowrap">{player.username}</td>
+                        <td className="px-4 py-3 whitespace-pre text-slate-700">{formatRankList(player.picks.top5, 1)}</td>
+                        <td className="px-4 py-3 whitespace-pre text-slate-700">{formatRankList(player.picks.bottom5, 16)}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">{player.picks.wildcardTeam} - {ordinal(Number(player.picks.wildcardPosition))}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">{player.picks.managerSacked}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">{player.picks.zeroGoalDiff}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">{player.picks.mostCards}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">{player.picks.mostDraws}</td>
                         <td className="px-4 py-3 text-right">
                           <button
                             onClick={() => handleEditPlayer(player)}
@@ -675,6 +730,38 @@ export default function Page() {
                             Delete
                           </button>
                         </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section className="mt-6 rounded-3xl bg-white p-5 shadow-sm">
+              <h2 className="mb-4 text-xl font-semibold">League Table</h2>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-slate-500">
+                      <th className="px-2 py-3">#</th>
+                      <th className="px-2 py-3">Team</th>
+                      <th className="px-2 py-3 text-center">P</th>
+                      <th className="px-2 py-3 text-center">GD</th>
+                      <th className="px-2 py-3 text-center">GF</th>
+                      <th className="px-2 py-3 text-center">GA</th>
+                      <th className="px-2 py-3 text-center">Pts</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayTable.map((row) => (
+                      <tr key={row.team} className="border-b last:border-0 hover:bg-slate-50">
+                        <td className="px-2 py-3 font-medium">{row.position}</td>
+                        <td className="px-2 py-3 font-medium whitespace-nowrap">{row.team}</td>
+                        <td className="px-2 py-3 text-center">{row.played}</td>
+                        <td className="px-2 py-3 text-center">{row.gd > 0 ? `+${row.gd}` : row.gd}</td>
+                        <td className="px-2 py-3 text-center">{row.gf}</td>
+                        <td className="px-2 py-3 text-center">{row.ga}</td>
+                        <td className="px-2 py-3 text-center font-semibold">{row.points}</td>
                       </tr>
                     ))}
                   </tbody>
