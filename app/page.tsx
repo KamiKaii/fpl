@@ -282,10 +282,14 @@ function scoreParticipant(
     badges.push({ label: "Cards", title: "Most cards: 3 pts", variant: "cards" });
   }
 
-  if (participant.picks.managerSacked === "Graham Potter - West Ham United") {
-    score += 3;
-    badges.push({ label: "Fired", title: "Manager sacked: 3 pts", variant: "fired" });
-  }
+const sackedManagerOptions = MANAGERS_SACKED.map(
+  (item) => `${item.name} - ${item.team}`
+);
+
+if (sackedManagerOptions.includes(participant.picks.managerSacked)) {
+  score += 3;
+  badges.push({ label: "Fired", title: "Manager sacked: 3 pts", variant: "fired" });
+}
 
   if (closestZeroTeams.includes(participant.picks.zeroGoalDiff)) {
     score += 3;
