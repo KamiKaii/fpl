@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 type ApiStandingRow = {
   position: number;
@@ -39,6 +40,20 @@ type Participant = {
 
 type ScoredParticipant = Participant & {
   score: number;
+};
+
+type ParticipantRow = {
+  id: string;
+  username: string;
+  top5: string[];
+  bottom5: string[];
+  wildcard_team: string;
+  wildcard_position: number;
+  most_cards: string;
+  manager_sacked: string;
+  zero_goal_diff: string;
+  most_draws: string;
+  created_at: string;
 };
 
 const TEAM_NAMES = [
@@ -115,10 +130,7 @@ const START_OF_SEASON_MANAGER_OPTIONS = [
   "Vítor Pereira - Wolverhampton Wanderers",
 ] as const;
 
-const STORAGE_KEY = "fpl-friends-tracker-v6";
 const K9_KEY = "fpl-admin-k1n9k4i";
-
-const DEFAULT_PARTICIPANTS: Participant[] = [];
 
 const MANAGERS_SACKED = [
   { name: "Nuno Espírito Santo", team: "Nottingham Forest" },
@@ -168,11 +180,6 @@ const RULES = [
     ],
   },
 ];
-
-function uid() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
-  return Math.random().toString(36).slice(2);
-}
 
 function normalizeTeamName(team: string) {
   return TEAM_NAME_MAP[team] ?? team;
@@ -239,11 +246,30 @@ function toEditableRows(standings: ApiStandingRow[]): TeamRow[] {
   }));
 }
 
+function dbRowToParticipant(row: ParticipantRow): Participant {
+  return {
+    id: row.id,
+    username: row.username,
+    picks: {
+      top5: row.top5,
+      bottom5: row.bottom5,
+      wildcardTeam: row.wildcard_team,
+      wildcardPosition: String(row.wildcard_position),
+      mostCards: row.most_cards,
+      managerSacked: row.manager_sacked,
+      zeroGoalDiff: row.zero_goal_diff,
+      mostDraws: row.most_draws,
+    },
+  };
+}
+
 export default function Page() {
   const [leagueTable, setLeagueTable] = useState<TeamRow[]>([]);
-  const [participants, setParticipants] = useState<Participant[]>(DEFAULT_PARTICIPANTS);
+  const [participants, setParticipants] = useState<Participant[]>([]);
   const [loadingTable, setLoadingTable] = useState(true);
+  const [loadingParticipants, setLoadingParticipants] = useState(true);
   const [tableError, setTableError] = useState<string | null>(null);
+  const [participantError, setParticipantError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"standings" | "form" | "rules">("standings");
   const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null);
   const [entry, setEntry] = useState<Picks & { username: string }>({
@@ -259,14 +285,26 @@ export default function Page() {
   });
 
   useEffect(() => {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed.participants) setParticipants(parsed.participants);
-    } catch {
-      // ignore bad local data
+    async function loadParticipants() {
+      setLoadingParticipants(true);
+      setParticipantError(null);
+
+      const { data, error } = await supabase
+        .from("participants")
+        .select("*")
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        setParticipantError(error.message);
+        setLoadingParticipants(false);
+        return;
+      }
+
+      setParticipants(((data ?? []) as ParticipantRow[]).map(dbRowToParticipant));
+      setLoadingParticipants(false);
     }
+
+    loadParticipants();
   }, []);
 
   useEffect(() => {
@@ -287,10 +325,6 @@ export default function Page() {
 
     loadStandings();
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ participants }));
-  }, [participants]);
 
   const displayTable = useMemo(() => {
     return [...leagueTable]
@@ -330,7 +364,7 @@ export default function Page() {
     });
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     if (!entry.username.trim()) {
@@ -373,37 +407,67 @@ export default function Page() {
       return;
     }
 
-    const nextParticipant = {
-      id: editingPlayerId ?? uid(),
+    const payload = {
       username: entry.username.trim(),
-      picks: {
-        top5: entry.top5,
-        bottom5: entry.bottom5,
-        wildcardTeam: entry.wildcardTeam,
-        wildcardPosition: entry.wildcardPosition,
-        mostCards: entry.mostCards,
-        managerSacked: entry.managerSacked,
-        zeroGoalDiff: entry.zeroGoalDiff,
-        mostDraws: entry.mostDraws,
-      },
+      top5: entry.top5,
+      bottom5: entry.bottom5,
+      wildcard_team: entry.wildcardTeam,
+      wildcard_position: Number(entry.wildcardPosition),
+      most_cards: entry.mostCards,
+      manager_sacked: entry.managerSacked,
+      zero_goal_diff: entry.zeroGoalDiff,
+      most_draws: entry.mostDraws,
     };
 
     if (editingPlayerId) {
-      setParticipants((current) => current.map((player) => (player.id === editingPlayerId ? nextParticipant : player)));
+      const { data, error } = await supabase
+        .from("participants")
+        .update(payload)
+        .eq("id", editingPlayerId)
+        .select()
+        .single();
+
+      if (error) {
+        alert(`Failed to update player: ${error.message}`);
+        return;
+      }
+
+      setParticipants((current) =>
+        current.map((player) => (player.id === editingPlayerId ? dbRowToParticipant(data as ParticipantRow) : player))
+      );
     } else {
-      setParticipants((current) => [...current, nextParticipant]);
+      const { data, error } = await supabase
+        .from("participants")
+        .insert(payload)
+        .select()
+        .single();
+
+      if (error) {
+        alert(`Failed to add player: ${error.message}`);
+        return;
+      }
+
+      setParticipants((current) => [...current, dbRowToParticipant(data as ParticipantRow)]);
     }
 
     resetForm();
     setActiveTab("standings");
   }
 
-  function handleDeletePlayer(id: string) {
+  async function handleDeletePlayer(id: string) {
     const enteredPassword = window.prompt("Enter admin password to delete this player:");
     if (enteredPassword !== K9_KEY) {
       window.alert("Incorrect password.");
       return;
     }
+
+    const { error } = await supabase.from("participants").delete().eq("id", id);
+
+    if (error) {
+      window.alert(`Failed to delete player: ${error.message}`);
+      return;
+    }
+
     setParticipants((current) => current.filter((player) => player.id !== id));
   }
 
@@ -463,6 +527,8 @@ export default function Page() {
 
         {loadingTable && <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm">Loading live table…</div>}
         {tableError && <div className="mb-6 rounded-2xl bg-red-50 p-4 text-red-700 shadow-sm">Could not load standings: {tableError}</div>}
+        {loadingParticipants && <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm">Loading participants…</div>}
+        {participantError && <div className="mb-6 rounded-2xl bg-red-50 p-4 text-red-700 shadow-sm">Could not load participants: {participantError}</div>}
 
         {activeTab === "standings" && !!displayTable.length && (
           <>
@@ -476,6 +542,7 @@ export default function Page() {
                 </div>
                 <div className="mt-4 text-xs text-slate-500">Updated April 10, 2026 · Numbers may not be exact and are approximate values from Claude.</div>
               </div>
+
               <div className="rounded-3xl bg-white p-6 shadow-sm">
                 <div className="text-xl font-bold tracking-tight text-slate-900">Managers Sacked</div>
                 <div className="mt-4 space-y-2 text-sm text-slate-700">
@@ -487,6 +554,7 @@ export default function Page() {
                 </div>
                 <div className="mt-4 text-xs text-slate-500">Updated April 10, 2026</div>
               </div>
+
               <div className="rounded-3xl bg-white p-6 shadow-sm">
                 <div className="text-xl font-bold tracking-tight text-slate-900">Zero Goal Difference</div>
                 <div className="mt-4 space-y-2 text-slate-700">
@@ -497,7 +565,7 @@ export default function Page() {
                 <div className="mt-4 text-xs text-slate-500">
                   {closestZeroGoalDiff.distance === 0
                     ? "Teams currently at 0 goal difference."
-                    : `Teams closest to 0 goal difference (${closestZeroGoalDiff.distance > 0 ? `±${closestZeroGoalDiff.distance}` : closestZeroGoalDiff.distance}).`}
+                    : `Teams closest to 0 goal difference (±${closestZeroGoalDiff.distance}).`}
                 </div>
               </div>
             </div>
@@ -569,8 +637,8 @@ export default function Page() {
                   <thead className="bg-slate-50 text-left text-slate-500">
                     <tr>
                       <th className="px-4 py-3">Player</th>
-                      <th className="px-4 py-3">Top 5 (1-5)</th>
-                      <th className="px-4 py-3">Bottom 5 (16-20)</th>
+                      <th className="px-4 py-3">Top 5</th>
+                      <th className="px-4 py-3">Bottom 5</th>
                       <th className="px-4 py-3">Wildcard</th>
                       <th className="px-4 py-3">Manager Sacked</th>
                       <th className="px-4 py-3">Zero Goal Differential</th>
