@@ -174,7 +174,7 @@ const TEAM_NAME_MAP: Record<string, string> = {
   "Coventry City": "Coventry City",
 };
 
-const K9_KEY = "fpl-admin-k1n9k4i";
+const K9_KEY = "fpl-k1n9k4i";
 
 const RULES = [
   {
